@@ -1,8 +1,6 @@
-// Наблюдатель страницы и UI-инжектор
 (function() {
   'use strict';
 
-  // Ждем полной загрузки страницы
   function waitForVacancy() {
     const checkInterval = setInterval(() => {
       const vacancyContent = document.querySelector('[data-qa="vacancy-description"]')
@@ -14,66 +12,69 @@
         injectGradeBadge();
       }
     }, 500);
-
-    // Таймаут 10 секунд
     setTimeout(() => clearInterval(checkInterval), 10000);
   }
 
-  // Внедрение бейджа с уровнем
   function injectGradeBadge() {
-    // Проверяем, не внедрен ли уже
     if (document.getElementById('hh-grade-badge')) return;
 
     const classifier = new window.GradeClassifier();
     const result = classifier.classify();
     
-    // Создаем бейдж
     const badge = document.createElement('div');
     badge.id = 'hh-grade-badge';
     badge.style.cssText = `
       margin: 12px 0;
-      padding: 12px 16px;
-      border-radius: 8px;
+      padding: 14px 16px;
+      border-radius: 10px;
       background: ${getGradeColor(result.grade)};
       color: white;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       font-size: 14px;
-      font-weight: 600;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.15);
-      display: flex;
-      align-items: center;
-      gap: 8px;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.2);
       animation: slideIn 0.3s ease-out;
     `;
 
-    // Иконка
+    // Верхняя строка: иконка + грейд + уверенность
+    const topRow = document.createElement('div');
+    topRow.style.cssText = 'display: flex; align-items: center; gap: 10px; margin-bottom: 6px;';
+    
     const icon = document.createElement('span');
     icon.textContent = getGradeIcon(result.grade);
-    icon.style.fontSize = '24px';
-    badge.appendChild(icon);
-
-    // Текст
-    const textDiv = document.createElement('div');
-    textDiv.style.display = 'flex';
-    textDiv.style.flexDirection = 'column';
-    textDiv.style.gap = '2px';
+    icon.style.fontSize = '28px';
+    topRow.appendChild(icon);
+    
+    const gradeInfo = document.createElement('div');
+    gradeInfo.style.display = 'flex';
+    gradeInfo.style.flexDirection = 'column';
     
     const gradeText = document.createElement('span');
     gradeText.textContent = classifier.translateGrade(result.grade);
-    gradeText.style.fontSize = '16px';
-    gradeText.style.fontWeight = '700';
-    textDiv.appendChild(gradeText);
+    gradeText.style.cssText = 'font-size: 18px; font-weight: 700;';
+    gradeInfo.appendChild(gradeText);
     
-    const detailText = document.createElement('span');
-    detailText.textContent = `Уверенность: ${result.confidence}%${result.subLevel}`;
-    detailText.style.fontSize = '12px';
-    detailText.style.opacity = '0.9';
-    detailText.style.fontWeight = '400';
-    textDiv.appendChild(detailText);
+    const confidenceText = document.createElement('span');
+    confidenceText.textContent = `Уверенность: ${result.confidence}%${result.subLevel}`;
+    confidenceText.style.cssText = 'font-size: 12px; opacity: 0.9; font-weight: 400;';
+    gradeInfo.appendChild(confidenceText);
+    
+    topRow.appendChild(gradeInfo);
+    badge.appendChild(topRow);
 
-    badge.appendChild(textDiv);
+    // Нижняя строка: объяснение
+    const explanationRow = document.createElement('div');
+    explanationRow.style.cssText = `
+      font-size: 11px;
+      opacity: 0.85;
+      line-height: 1.5;
+      padding-top: 6px;
+      border-top: 1px solid rgba(255,255,255,0.2);
+      font-weight: 400;
+    `;
+    explanationRow.textContent = result.explanation;
+    badge.appendChild(explanationRow);
 
-    // Добавляем анимацию
+    // Анимация
     const styleSheet = document.createElement('style');
     styleSheet.textContent = `
       @keyframes slideIn {
@@ -83,21 +84,17 @@
     `;
     document.head.appendChild(styleSheet);
 
-    // Внедряем в страницу
-    const targetSelector = '[data-qa="vacancy-description"]';
-    const vacancyDesc = document.querySelector(targetSelector);
-    
+    // Внедрение
+    const vacancyDesc = document.querySelector('[data-qa="vacancy-description"]');
     if (vacancyDesc && vacancyDesc.parentElement) {
       vacancyDesc.parentElement.insertBefore(badge, vacancyDesc);
     } else {
-      // Fallback: ищем заголовок вакансии
       const titleEl = document.querySelector('h1');
       if (titleEl && titleEl.parentElement) {
         titleEl.parentElement.insertBefore(badge, titleEl.nextSibling);
       }
     }
 
-    // Сохраняем в storage для истории
     saveToHistory(result);
   }
 
@@ -133,41 +130,31 @@
       chrome.storage.local.get(['vacancyHistory'], (data) => {
         const history = data.vacancyHistory || [];
         history.unshift({
-          url: url,
-          title: title.trim(),
-          grade: result.grade,
-          confidence: result.confidence,
+          url, title: title.trim(), grade: result.grade,
+          confidence: result.confidence, explanation: result.explanation,
           timestamp: Date.now()
         });
-        
-        // Храним последние 100 записей
-        const trimmed = history.slice(0, 100);
-        chrome.storage.local.set({ vacancyHistory: trimmed });
+        chrome.storage.local.set({ vacancyHistory: history.slice(0, 100) });
       });
     } catch (e) {
       console.error('HH Analyzer: Failed to save history', e);
     }
   }
 
-  // Запуск при загрузке
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', waitForVacancy);
   } else {
     waitForVacancy();
   }
 
-  // Повторный анализ при SPA-навигации
   let lastUrl = location.href;
   new MutationObserver(() => {
     const currentUrl = location.href;
     if (currentUrl !== lastUrl) {
       lastUrl = currentUrl;
-      // Удаляем старый бейдж
       const oldBadge = document.getElementById('hh-grade-badge');
       if (oldBadge) oldBadge.remove();
-      // Ждем новый контент
       setTimeout(waitForVacancy, 1000);
     }
   }).observe(document, { subtree: true, childList: true });
-
 })();

@@ -1,7 +1,6 @@
 document.addEventListener('DOMContentLoaded', () => {
   loadStats();
   loadHistory();
-  
   document.getElementById('clearBtn').addEventListener('click', () => {
     chrome.runtime.sendMessage({ action: 'clearHistory' }, () => {
       loadStats();
@@ -14,8 +13,6 @@ function loadStats() {
   chrome.runtime.sendMessage({ action: 'getHistory' }, (data) => {
     const history = data?.vacancyHistory || [];
     document.getElementById('totalCount').textContent = history.length;
-    
-    // Считаем за сегодня
     const today = new Date().setHours(0, 0, 0, 0);
     const todayCount = history.filter(item => item.timestamp > today).length;
     document.getElementById('todayCount').textContent = todayCount;
@@ -35,7 +32,8 @@ function loadHistory() {
     listEl.innerHTML = history.slice(0, 20).map(item => `
       <div class="history-item">
         <div style="flex: 1; min-width: 0;">
-          <div style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${escapeHtml(item.title)}</div>
+          <div style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 600;">${escapeHtml(item.title)}</div>
+          <div style="font-size: 10px; color: #aaa; margin-top: 3px; line-height: 1.3;">${escapeHtml(item.explanation || '')}</div>
           <div style="font-size: 10px; color: #888; margin-top: 2px;">
             ${new Date(item.timestamp).toLocaleString('ru-RU')} · ${item.confidence}%
           </div>
